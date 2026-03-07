@@ -1,0 +1,17 @@
+# Build output
+bin/
+obj/
+nupkg/
+publish/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
