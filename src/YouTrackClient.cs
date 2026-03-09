@@ -32,9 +32,14 @@ public class YouTrackClient
     public async Task<List<YtProject>> GetProjectsAsync()
         => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=100") ?? [];
 
-    public async Task<Issue> CreateIssueAsync(string project, string summary, string? description)
+    public async Task<Issue> CreateIssueAsync(string projectShortName, string summary, string? description)
     {
-        var body = new { project = new { id = project }, summary, description };
+        // The API requires the internal project ID, not the short name
+        var projects = await GetProjectsAsync();
+        var project = projects.FirstOrDefault(p => p.ShortName.Equals(projectShortName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new YouTrackException($"Project '{projectShortName}' not found. Run 'yt projects' to see available projects.");
+
+        var body = new { project = new { id = project.Id }, summary, description };
         var response = await _http.PostAsJsonAsync(
             $"{_baseUrl}/api/issues?fields=id,idReadable,summary", body, JsonOptions);
         await EnsureSuccessAsync(response);
