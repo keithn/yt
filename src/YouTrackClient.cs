@@ -30,13 +30,24 @@ public class YouTrackClient
         => (await GetAsync<MeUser>($"{_baseUrl}/api/users/me?fields=login,fullName,email"))!;
 
     public async Task<List<YtProject>> GetProjectsAsync()
-        => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=100") ?? [];
+        => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=500") ?? [];
+
+    public async Task<YtProject?> GetProjectByShortNameAsync(string shortName)
+    {
+        // Try admin API first
+        var projects = await GetProjectsAsync();
+        var project = projects.FirstOrDefault(p => p.ShortName.Equals(shortName, StringComparison.OrdinalIgnoreCase));
+        if (project is not null) return project;
+
+        // Fall back: resolve project ID from an existing issue in the project
+        var issues = await GetAsync<List<IssueWithProject>>(
+            $"{_baseUrl}/api/issues?query={Uri.EscapeDataString($"project: {shortName}")}&fields=project(id,name,shortName)&$top=1");
+        return issues?.FirstOrDefault()?.Project;
+    }
 
     public async Task<Issue> CreateIssueAsync(string projectShortName, string summary, string? description)
     {
-        // The API requires the internal project ID, not the short name
-        var projects = await GetProjectsAsync();
-        var project = projects.FirstOrDefault(p => p.ShortName.Equals(projectShortName, StringComparison.OrdinalIgnoreCase))
+        var project = await GetProjectByShortNameAsync(projectShortName)
             ?? throw new YouTrackException($"Project '{projectShortName}' not found. Run 'yt projects' to see available projects.");
 
         var body = new { project = new { id = project.Id }, summary, description };
@@ -152,5 +163,7 @@ public record CustomField(string Name, JsonElement? Value)
 public record MeUser(string Login, string? FullName, string? Email);
 
 public record YtProject(string Id, string Name, string ShortName);
+
+public record IssueWithProject(string Id, YtProject? Project);
 
 public class YouTrackException(string message) : Exception(message);
