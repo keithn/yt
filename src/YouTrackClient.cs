@@ -30,7 +30,7 @@ public class YouTrackClient
         => (await GetAsync<MeUser>($"{_baseUrl}/api/users/me?fields=login,fullName,email"))!;
 
     public async Task<List<YtProject>> GetProjectsAsync()
-        => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=100") ?? [];
+        => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=500") ?? [];
 
     public async Task<Issue> CreateIssueAsync(string projectShortName, string summary, string? description)
     {
