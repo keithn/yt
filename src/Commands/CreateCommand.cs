@@ -25,7 +25,7 @@ public static class CreateCommand
             var issue = await client.CreateIssueAsync(project, summary, description);
 
             if (!string.IsNullOrEmpty(type))
-                await client.ApplyCommandAsync(issue.Id, $"type {type}");
+                await client.ApplyCommandAsync(issue.IdReadable, $"type {type}");
 
             Console.WriteLine($"Created {issue.IdReadable}: {issue.Summary}");
         }));

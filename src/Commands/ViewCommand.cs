@@ -8,7 +8,7 @@ public static class ViewCommand
         var commentsOpt = new Option<bool>("--comments", "-c") { Description = "Include comments" };
         var imagesOpt = new Option<bool>("--images", "-i") { Description = "Display image attachments inline" };
 
-        var cmd = new Command("view", "Show details of an issue");
+        var cmd = new Command("view", "Show full details of an issue: summary, custom fields, description, and optionally comments. When piped, outputs clean markdown suitable for further processing.");
         cmd.Arguments.Add(issueArg);
         cmd.Options.Add(commentsOpt);
         cmd.Options.Add(imagesOpt);
@@ -87,7 +87,7 @@ public static class ViewCommand
             foreach (var comment in comments)
             {
                 var author = comment.Author?.FullName ?? comment.Author?.Login ?? "Unknown";
-                Console.WriteLine($"**{author}** — {comment.CreatedAt:yyyy-MM-dd HH:mm}");
+                Console.WriteLine($"**{author}** — {comment.CreatedAt:yyyy-MM-dd HH:mm} <!-- id:{comment.Id} -->");
                 Console.WriteLine();
                 Console.WriteLine(comment.Text);
                 Console.WriteLine();
@@ -143,7 +143,9 @@ public static class ViewCommand
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.Write(author);
                 Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine($"  {comment.CreatedAt:yyyy-MM-dd HH:mm}");
+                Console.Write($"  {comment.CreatedAt:yyyy-MM-dd HH:mm}");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  [{comment.Id}]");
                 Console.ResetColor();
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Console.WriteLine(comment.Text);

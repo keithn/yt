@@ -22,7 +22,7 @@ public class YouTrackClient
 
     public async Task<List<Issue>> SearchAsync(string query, int top = 20)
     {
-        var url = $"{_baseUrl}/api/issues?query={Uri.EscapeDataString(query)}&fields=id,idReadable,summary,customFields(name,value(name))&$top={top}";
+        var url = $"{_baseUrl}/api/issues?query={Uri.EscapeDataString(query)}&fields=id,idReadable,summary,customFields(name,value(name,login,fullName))&$top={top}";
         return await GetAsync<List<Issue>>(url) ?? [];
     }
 
@@ -30,7 +30,19 @@ public class YouTrackClient
         => (await GetAsync<MeUser>($"{_baseUrl}/api/users/me?fields=login,fullName,email"))!;
 
     public async Task<List<YtProject>> GetProjectsAsync()
-        => await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top=100") ?? [];
+    {
+        var all = new List<YtProject>();
+        int skip = 0;
+        const int pageSize = 100;
+        while (true)
+        {
+            var page = await GetAsync<List<YtProject>>($"{_baseUrl}/api/admin/projects?fields=id,name,shortName&$top={pageSize}&$skip={skip}") ?? [];
+            all.AddRange(page);
+            if (page.Count < pageSize) break;
+            skip += pageSize;
+        }
+        return all;
+    }
 
     public async Task<Issue> CreateIssueAsync(string projectShortName, string summary, string? description)
     {
@@ -44,6 +56,58 @@ public class YouTrackClient
             $"{_baseUrl}/api/issues?fields=id,idReadable,summary", body, JsonOptions);
         await EnsureSuccessAsync(response);
         return (await response.Content.ReadFromJsonAsync<Issue>(JsonOptions))!;
+    }
+
+    public async Task UpdateIssueAsync(string issueId, string? summary, string? description)
+    {
+        var body = new Dictionary<string, object?>();
+        if (summary is not null) body["summary"] = summary;
+        if (description is not null) body["description"] = description;
+        var response = await _http.PostAsJsonAsync(
+            $"{_baseUrl}/api/issues/{issueId}", body, JsonOptions);
+        await EnsureSuccessAsync(response);
+    }
+
+    public async Task UpdateFixVersionsAsync(string issueId, string[] versions)
+    {
+        // Resolve the project ID from the issue
+        var issueProject = await GetAsync<IssueProjectRef>($"{_baseUrl}/api/issues/{issueId}?fields=project(id,shortName)");
+        var projectId = issueProject?.Project?.Id
+            ?? throw new YouTrackException("Could not determine project for issue.");
+
+        // Ensure each requested version exists, creating it if not
+        if (versions.Length > 0)
+        {
+            var existing = await GetAsync<List<YtVersion>>($"{_baseUrl}/api/admin/projects/{projectId}/versions?fields=id,name") ?? [];
+            var existingNames = existing.Select(v => v.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var v in versions.Where(v => !existingNames.Contains(v)))
+            {
+                var createResp = await _http.PostAsJsonAsync(
+                    $"{_baseUrl}/api/admin/projects/{projectId}/versions", new { name = v }, JsonOptions);
+                await EnsureSuccessAsync(createResp);
+            }
+        }
+
+        var values = versions.Select(v => new Dictionary<string, object?> { ["$type"] = "VersionValue", ["name"] = v }).ToList();
+        var body = new Dictionary<string, object?>
+        {
+            ["customFields"] = new[]
+            {
+                new Dictionary<string, object?> { ["$type"] = "MultiVersionIssueCustomField", ["name"] = "Fix versions", ["value"] = values }
+            }
+        };
+        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}", body, JsonOptions);
+        await EnsureSuccessAsync(response);
+    }
+
+    public async Task MoveIssueAsync(string issueId, string projectShortName)
+    {
+        var projects = await GetProjectsAsync();
+        var project = projects.FirstOrDefault(p => p.ShortName.Equals(projectShortName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new YouTrackException($"Project '{projectShortName}' not found. Run 'yt projects' to see available projects.");
+        var body = new Dictionary<string, object?> { ["project"] = new Dictionary<string, object?> { ["id"] = project.Id } };
+        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}", body, JsonOptions);
+        await EnsureSuccessAsync(response);
     }
 
     public async Task AddCommentAsync(string issueId, string text)
@@ -72,9 +136,51 @@ public class YouTrackClient
         return await _http.GetByteArrayAsync(fullUrl);
     }
 
-    public async Task ApplyCommandAsync(string issueId, string command)
+    public async Task LogWorkAsync(string issueId, string duration, string? description)
     {
-        var body = new { query = command, issues = new[] { new { id = issueId } } };
+        var body = new Dictionary<string, object?> { ["duration"] = new { presentation = duration } };
+        if (description is not null) body["text"] = description;
+        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}/timeTracking/workItems", body, JsonOptions);
+        await EnsureSuccessAsync(response);
+    }
+
+    public async Task EditCommentAsync(string issueId, string commentId, string text)
+    {
+        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}/comments/{commentId}", new { text }, JsonOptions);
+        await EnsureSuccessAsync(response);
+    }
+
+    public async Task AttachFileAsync(string issueId, string filePath)
+    {
+        if (!File.Exists(filePath))
+            throw new YouTrackException($"File not found: {filePath}");
+        using var form = new MultipartFormDataContent();
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var fileName = Path.GetFileName(filePath);
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(GetMimeType(filePath));
+        form.Add(content, "file", fileName);
+        var response = await _http.PostAsync($"{_baseUrl}/api/issues/{issueId}/attachments", form);
+        await EnsureSuccessAsync(response);
+    }
+
+    private static string GetMimeType(string filePath) => Path.GetExtension(filePath).ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png"            => "image/png",
+        ".gif"            => "image/gif",
+        ".pdf"            => "application/pdf",
+        ".txt" or ".log"  => "text/plain",
+        ".md"             => "text/markdown",
+        ".zip"            => "application/zip",
+        ".json"           => "application/json",
+        ".xml"            => "application/xml",
+        _                 => "application/octet-stream"
+    };
+
+    public async Task ApplyCommandAsync(string issueIdReadable, string command)
+    {
+        var body = new { query = command, issues = new[] { new { idReadable = issueIdReadable } } };
         var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/commands", body, JsonOptions);
         await EnsureSuccessAsync(response);
     }
@@ -152,5 +258,12 @@ public record CustomField(string Name, JsonElement? Value)
 public record MeUser(string Login, string? FullName, string? Email);
 
 public record YtProject(string Id, string Name, string ShortName);
+
+public record YtVersion(string Id, string Name);
+
+// Lightweight project ref used when only id is needed (avoids requiring Name field)
+public record YtProjectRef(string Id, string ShortName);
+
+public record IssueProjectRef(YtProjectRef? Project);
 
 public class YouTrackException(string message) : Exception(message);

@@ -6,13 +6,13 @@ public static class SearchCommand
     {
         var queryArg = new Argument<string?>("query")
         {
-            Description = "YouTrack search query (default: assignee: me)",
+            Description = "YouTrack query language expression (default: assignee: me). Examples: 'project: PROJ state: Open', 'assignee: john.doe priority: Critical', '#PROJ-123'. Supports full YouTrack query syntax.",
             Arity = ArgumentArity.ZeroOrOne
         };
-        var recentOpt = new Option<bool>("--recent") { Description = "Sort by most recently updated" };
-        var topOpt = new Option<int>("--top", "-n") { Description = "Maximum number of results", DefaultValueFactory = _ => 20 };
+        var recentOpt = new Option<bool>("--recent") { Description = "Sort results by most recently updated first" };
+        var topOpt = new Option<int>("--top", "-n") { Description = "Maximum number of results to return (default: 20)", DefaultValueFactory = _ => 20 };
 
-        var cmd = new Command("search", "Search for issues");
+        var cmd = new Command("search", "Search for issues using YouTrack query language. Output columns: ID, State, Summary.");
         cmd.Arguments.Add(queryArg);
         cmd.Options.Add(recentOpt);
         cmd.Options.Add(topOpt);
