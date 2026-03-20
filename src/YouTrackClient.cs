@@ -199,6 +199,23 @@ public class YouTrackClient
         await EnsureSuccessAsync(response);
     }
 
+    public async Task<(int StatusCode, string Body)> RawAsync(string method, string path, string? body)
+    {
+        var url = path.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? path : $"{_baseUrl}{path}";
+        var request = new HttpRequestMessage(new HttpMethod(method.ToUpperInvariant()), url);
+        if (body is not null)
+            request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var response = await _http.SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(content);
+            content = System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch { }
+        return ((int)response.StatusCode, content);
+    }
+
     private async Task<T?> GetAsync<T>(string url)
     {
         var response = await _http.GetAsync(url);

@@ -127,6 +127,19 @@ yt command WEB-123 "fix version 6.128.0 priority Major"
 
 Multiple fields can be combined in a single command string.
 
+### Raw API access
+
+```bash
+yt api GET "/api/issues/WEB-123?fields=id,summary,customFields(name,value(name))"
+yt api GET "/api/admin/projects?fields=id,shortName&$top=50"
+yt api POST "/api/commands" --body '{"query":"priority Critical","issues":[{"idReadable":"WEB-123"}]}'
+yt api DELETE "/api/issues/WEB-123/comments/79-12345"
+```
+
+Uses stored credentials automatically. Response is pretty-printed JSON on stdout; HTTP status on stderr. Useful for any YouTrack endpoint not covered by a named command.
+
+> **Windows git bash**: `/api/...` paths are converted by MSYS. Prefix with `MSYS_NO_PATHCONV=1` or use PowerShell.
+
 ### Other
 
 ```bash
@@ -187,6 +200,13 @@ Use the `yt` CLI to interact with YouTrack.
 ### Work and attachments
 - `yt worklog WEB-123 "1h 30m" --description "..."` — log time
 - `yt attach WEB-123 ./file.png` — upload attachment
+
+### Raw API
+- `yt api GET "/api/issues/PROJ-123?fields=id,summary,customFields(name,value(name))"` — direct authenticated REST call
+- `yt api POST "/api/commands" --body '{"query":"...","issues":[{"idReadable":"PROJ-123"}]}'`
+- Response is pretty-printed JSON on stdout; HTTP status on stderr; exits 1 on non-2xx
+- Use for any endpoint not covered by other commands
+- On Windows git bash: prefix with `MSYS_NO_PATHCONV=1` to prevent `/api/...` path conversion
 
 ### Other
 - `yt assign WEB-123 john.doe` — assign by login; `yt me` shows your login

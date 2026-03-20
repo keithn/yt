@@ -21,5 +21,6 @@ rootCommand.Subcommands.Add(UntagCommand.Build());
 rootCommand.Subcommands.Add(WorklogCommand.Build());
 rootCommand.Subcommands.Add(AttachCommand.Build());
 rootCommand.Subcommands.Add(ProjectsCommand.Build());
+rootCommand.Subcommands.Add(ApiCommand.Build());
 
 return await rootCommand.Parse(args).InvokeAsync();

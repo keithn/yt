@@ -110,6 +110,22 @@ Commands use YouTrack's command language. Examples:
 
 Multiple fields can be set in a single command string.
 
+### Raw API call
+```
+yt api <method> <path> [--body|-b <json>]
+```
+- Makes an authenticated request directly against the YouTrack REST API using the stored credentials
+- `path` is relative to the base URL (e.g. `/api/issues/PROJ-123?fields=id,summary`) or a full URL
+- Response is always pretty-printed JSON written to stdout; HTTP status is written to stderr
+- Exits with code 1 on non-2xx responses
+- Use this for any endpoint not covered by other `yt` commands
+- Examples:
+  - `yt api GET "/api/issues/PROJ-123?fields=id,summary,customFields(name,value(name))"`
+  - `yt api GET "/api/admin/projects?fields=id,shortName&$top=10"`
+  - `yt api POST "/api/commands" --body '{"query":"priority Critical","issues":[{"idReadable":"PROJ-123"}]}'`
+  - `yt api DELETE "/api/issues/PROJ-123/comments/79-12345"`
+- **Windows git bash**: paths starting with `/` are converted by MSYS. Prefix the command with `MSYS_NO_PATHCONV=1` or use PowerShell
+
 ### Open in browser
 ```
 yt open <issue-id>
