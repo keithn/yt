@@ -70,34 +70,46 @@ public class YouTrackClient
 
     public async Task UpdateFixVersionsAsync(string issueId, string[] versions)
     {
-        // Resolve the project ID from the issue
-        var issueProject = await GetAsync<IssueProjectRef>($"{_baseUrl}/api/issues/{issueId}?fields=project(id,shortName)");
-        var projectId = issueProject?.Project?.Id
-            ?? throw new YouTrackException("Could not determine project for issue.");
-
-        // Ensure each requested version exists, creating it if not
+        // Create any missing versions in the bundle first
         if (versions.Length > 0)
         {
-            var existing = await GetAsync<List<YtVersion>>($"{_baseUrl}/api/admin/projects/{projectId}/versions?fields=id,name") ?? [];
+            var issueProject = await GetAsync<IssueProjectRef>($"{_baseUrl}/api/issues/{issueId}?fields=project(id,shortName)");
+            var projectId = issueProject?.Project?.Id
+                ?? throw new YouTrackException("Could not determine project for issue.");
+
+            var customFields = await GetAsync<List<ProjectCustomField>>(
+                $"{_baseUrl}/api/admin/projects/{projectId}/customFields?fields=id,field(name),bundle(id)") ?? [];
+            var bundleId = customFields
+                .FirstOrDefault(f => f.Field?.Name?.Equals("Fix versions", StringComparison.OrdinalIgnoreCase) == true)
+                ?.Bundle?.Id
+                ?? throw new YouTrackException("Could not find Fix versions field for this project.");
+
+            var existing = await GetAsync<List<YtVersion>>(
+                $"{_baseUrl}/api/admin/customFieldSettings/bundles/version/{bundleId}/values?fields=id,name") ?? [];
             var existingNames = existing.Select(v => v.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var v in versions.Where(v => !existingNames.Contains(v)))
             {
                 var createResp = await _http.PostAsJsonAsync(
-                    $"{_baseUrl}/api/admin/projects/{projectId}/versions", new { name = v }, JsonOptions);
+                    $"{_baseUrl}/api/admin/customFieldSettings/bundles/version/{bundleId}/values",
+                    new { name = v }, JsonOptions);
                 await EnsureSuccessAsync(createResp);
             }
         }
 
-        var values = versions.Select(v => new Dictionary<string, object?> { ["$type"] = "VersionValue", ["name"] = v }).ToList();
-        var body = new Dictionary<string, object?>
+        // Clear all fix versions — REST accepts an empty array for multi-value fields
+        var clearBody = new Dictionary<string, object?>
         {
-            ["customFields"] = new[]
+            ["customFields"] = new object[]
             {
-                new Dictionary<string, object?> { ["$type"] = "MultiVersionIssueCustomField", ["name"] = "Fix versions", ["value"] = values }
+                new Dictionary<string, object?> { ["$type"] = "MultiVersionIssueCustomField", ["name"] = "Fix versions", ["value"] = Array.Empty<object>() }
             }
         };
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}", body, JsonOptions);
-        await EnsureSuccessAsync(response);
+        var clearResp = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}", clearBody, JsonOptions);
+        await EnsureSuccessAsync(clearResp);
+
+        // Set new versions via command API (YouTrack REST rejects VersionValue bodies)
+        if (versions.Length > 0)
+            await ApplyCommandAsync(issueId, "Fix versions " + string.Join(" ", versions));
     }
 
     public async Task MoveIssueAsync(string issueId, string projectShortName)
@@ -120,7 +132,7 @@ public class YouTrackClient
 
     public async Task<IssueDetail> GetIssueAsync(string issueId)
     {
-        var fields = "id,idReadable,summary,description,reporter(fullName,login),customFields(name,value(name,login,fullName))";
+        var fields = "id,idReadable,summary,description,reporter(fullName,login),customFields(name,value(name,login,fullName)),tags(name)";
         return (await GetAsync<IssueDetail>($"{_baseUrl}/api/issues/{issueId}?fields={fields}"))!;
     }
 
@@ -141,6 +153,8 @@ public class YouTrackClient
         var body = new Dictionary<string, object?> { ["duration"] = new { presentation = duration } };
         if (description is not null) body["text"] = description;
         var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/issues/{issueId}/timeTracking/workItems", body, JsonOptions);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            throw new YouTrackException("Time tracking is not enabled for this project. Enable it in YouTrack under Project Settings → Time Tracking.");
         await EnsureSuccessAsync(response);
     }
 
@@ -221,7 +235,8 @@ public record IssueDetail(
     string Summary,
     string? Description,
     IssuePerson? Reporter,
-    List<CustomField> CustomFields);
+    List<CustomField> CustomFields,
+    List<IssueTag>? Tags);
 
 public record IssuePerson(string Login, string? FullName);
 
@@ -233,6 +248,8 @@ public record IssueComment(string Id, string Text, IssuePerson? Author, long Cre
 }
 
 public record IssueAttachment(string Id, string Name, string MimeType, string Url);
+
+public record IssueTag(string Name);
 
 public record CustomField(string Name, JsonElement? Value)
 {
@@ -265,5 +282,11 @@ public record YtVersion(string Id, string Name);
 public record YtProjectRef(string Id, string ShortName);
 
 public record IssueProjectRef(YtProjectRef? Project);
+
+public record BundleRef(string? Id);
+
+public record FieldRef(string? Name);
+
+public record ProjectCustomField(string? Id, FieldRef? Field, BundleRef? Bundle);
 
 public class YouTrackException(string message) : Exception(message);

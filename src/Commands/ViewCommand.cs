@@ -74,6 +74,12 @@ public static class ViewCommand
             Console.WriteLine();
         }
 
+        if (issue.Tags is { Count: > 0 })
+        {
+            Console.WriteLine($"| Tags | {string.Join(", ", issue.Tags.Select(t => t.Name))} |");
+            Console.WriteLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(issue.Description))
         {
             Console.WriteLine(issue.Description);
@@ -123,6 +129,15 @@ public static class ViewCommand
             Console.Write($"  {"Reporter",-15} ");
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine(issue.Reporter.FullName ?? issue.Reporter.Login);
+            Console.ResetColor();
+        }
+
+        if (issue.Tags is { Count: > 0 })
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write($"  {"Tags",-15} ");
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            Console.WriteLine(string.Join(", ", issue.Tags.Select(t => t.Name)));
             Console.ResetColor();
         }
 
