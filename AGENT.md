@@ -24,30 +24,82 @@ Output columns: `ID  State  Summary`
 
 ### View an issue
 ```
-yt view <issue-id> [--comments|-c]
+yt view <issue-id> [--comments|-c] [--images|-i]
 ```
-- Shows fields, custom fields, reporter, and description
-- `--comments` / `-c` also fetches comments with author and timestamp
-- Pipe to `glow` for rendered markdown: `yt view WEB-123 -c | glow`
+- Shows custom fields, reporter, and description
+- `-c` fetches comments with author, timestamp, and comment ID in [brackets]
+- Comment IDs shown with `-c` are required by `yt edit-comment`
+- Piped output is clean markdown (suitable for `glow`)
 
 ### Create an issue
 ```
-yt create <project> <summary> [--description <text>]
+yt create <project> <summary> [--description <text>] [--type <type>]
 ```
-- `project` is the short name (e.g. `WEB`, `PROJ`) — use `yt projects` to list them
+- `project` is the short name (e.g. `WEB`) — use `yt projects` to list them
+- `--type` sets the issue type (e.g. Bug, Feature, Task)
 - Prints the new issue ID on success
+- Omit args to use interactive prompts
+
+### Update an issue
+```
+yt update <issue-id> [--summary <text>] [--description <text>] [--type <type>]
+                     [--state <state>] [--fix-versions [v1 v2 ...]]
+                     [--move <project>] [--command <command>]
+```
+- At least one option is required
+- `--state` — quote multi-word values: `--state "In Progress"`
+- `--fix-versions v1 v2` — replaces all existing fix versions; missing versions are created automatically
+- `--fix-versions` with no values — clears all fix versions
+- `--move OTHER` — moves issue to another project by short name
+- `--command` — raw YouTrack command string for anything not covered above
 
 ### Comment on an issue
 ```
 yt comment <issue-id> <text>
 ```
+Supports YouTrack markdown.
+
+### Edit a comment
+```
+yt edit-comment <issue-id> <comment-id> <text>
+```
+Get `comment-id` from `yt view <issue-id> -c` (shown in [brackets] after author and timestamp).
 
 ### Assign an issue
 ```
-yt assign <issue-id> <username>
+yt assign <issue-id> <login>
+```
+- `login` is the YouTrack login name (e.g. `john.doe`) — use `yt me` to see your own
+- Use `unassigned` to clear the assignee
+
+### Link issues
+```
+yt link <issue-id> <link-type> <target-id>
+yt unlink <issue-id> <link-type> <target-id>
+```
+- `link-type` must match a link type configured in your YouTrack instance (e.g. `"depends on"`, `"relates to"`, `"duplicates"`, `"is subtask of"`)
+- Quote multi-word link types
+
+### Tags
+```
+yt tag <issue-id> <tag>
+yt untag <issue-id> <tag>
 ```
 
-### Apply a YouTrack command
+### Log work
+```
+yt worklog <issue-id> <duration> [--description <text>]
+```
+- Duration format: `1h 30m`, `45m`, `2h`, `1d`
+- Work is recorded at the current date and time
+
+### Attach a file
+```
+yt attach <issue-id> <file>
+```
+- `file` is an absolute or relative path to the file to upload
+
+### Apply a raw YouTrack command
 ```
 yt command <issue-id> "<command>"
 ```
@@ -84,13 +136,31 @@ yt search "assignee: me state: -Resolved state: -Deployed" --recent
 **Triage — view and update state:**
 ```
 yt view WEB-123 -c
-yt command WEB-123 "state In Progress"
+yt update WEB-123 --state "In Progress"
 ```
 
-**Create and assign in one go:**
+**Create, assign, and link:**
 ```
-yt create WEB "Fix login crash" --description "Reproducible on empty email field"
+yt create WEB "Fix login crash" --description "Reproducible on empty email field" --type Bug
 yt assign WEB-456 john.doe
+yt link WEB-456 "depends on" WEB-100
+```
+
+**Log work and attach evidence:**
+```
+yt worklog WEB-123 "2h" --description "Debugged and fixed root cause"
+yt attach WEB-123 ./logs/trace.log
+```
+
+**Update fix versions for a release:**
+```
+yt update WEB-123 --fix-versions 2.0.0 2.1.0
+```
+
+**Move a misrouted ticket:**
+```
+yt projects
+yt update WEB-123 --move BACKEND
 ```
 
 ## Output and errors
